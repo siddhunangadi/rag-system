@@ -1,0 +1,10 @@
+fastapi==0.128.8
+uvicorn==0.39.0
+python-multipart==0.0.20
+sentence-transformers==5.1.2
+faiss-cpu==1.13.0
+rank-bm25==0.2.2
+pypdf==6.19.0
+numpy==2.0.2
+torch==2.8.0
+httpx==0.28.1

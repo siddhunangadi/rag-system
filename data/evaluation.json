@@ -1,0 +1,363 @@
+{
+  "description": "Manually authored synthetic demonstration policies and relevance judgments; not legal guidance or a held-out production benchmark. Grade 2 = directly answers, 1 = useful supporting passage. Labels identify document pages so chunk-size experiments remain usable.",
+  "documents": [
+    "hr_policy.pdf"
+  ],
+  "queries": [
+    {
+      "query": "Can I save unused vacation days for next year?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 1,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "How many consecutive casual leave days can I take?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 2,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "When do I need a doctor note for being off sick?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 3,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "How long is paid maternity leave?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 4,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "My partner is having a baby. How much time off do I get?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 5,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "What paperwork do I need when adopting a child?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 6,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Can my probation be extended beyond six months?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 7,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "I am confirmed and want to resign. How long must I stay?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 8,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "How many days a week can I work from home?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 9,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Can I start my day at eight and leave earlier?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 10,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Where do I report workplace sexual harassment confidentially?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 11,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Who handles POSH complaints?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 11,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "My payslip is wrong. How long does HR take to acknowledge a grievance?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 12,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "How long must I work to qualify for gratuity?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 13,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Where can I see employer provident fund contributions?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 14,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "What is the deadline for claiming expenses after a business trip?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 15,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Will the company reimburse my home broadband bill?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 16,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Do I get overtime pay if I stay late without approval?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 17,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Which holiday calendar applies when I work remotely?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 18,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "My father died. What paid leave can I use?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 19,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "I have no paid days left. Can I take time off without salary?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 20,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "When are the formal employee reviews held?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 21,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Can I claim course fees if I did not get approval before enrolling?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 22,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Can I send confidential HR files to my personal email?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 23,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "When will finance pay my final settlement after clearance?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 24,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "What notice is required if I quit during probation?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 7,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "Does flexible working let me work from home?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 10,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 9,
+          "grade": 1
+        }
+      ]
+    },
+    {
+      "query": "What leave can new parents use for childbirth or adoption?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 4,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 5,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 6,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "What must I do to resign and complete my exit?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 8,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 24,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "What financial benefits are handled when employment ends?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 24,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 13,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "How do sick leave and casual leave documentation differ?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 3,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 2,
+          "grade": 2
+        }
+      ]
+    },
+    {
+      "query": "What security rules apply when accessing company systems from home?",
+      "relevant": [
+        {
+          "document": "hr_policy.pdf",
+          "page": 23,
+          "grade": 2
+        },
+        {
+          "document": "hr_policy.pdf",
+          "page": 9,
+          "grade": 1
+        }
+      ]
+    }
+  ]
+}

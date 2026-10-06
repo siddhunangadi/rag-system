@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HR Policy Finder</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header><a href="/" class="brand"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6"/></svg>HR Policy Finder</a><span class="privacy">Your HR policy workspace</span></header>
+<main>
+  <section class="intro"><h1>Less searching.<br><span>More clarity.</span></h1><p>Leave days. Notice periods. Work arrangements.<br>Get clear answers from your policy documents.</p></section>
+  <div class="workspace">
+    <aside>
+      <h2>Policy documents</h2>
+      <p id="corpus">No documents indexed yet.</p>
+      <form id="upload-form">
+        <label for="pdf">Upload HR policy PDF</label>
+        <input id="pdf" name="file" type="file" accept=".pdf,application/pdf" required aria-describedby="file-help">
+        <p class="hint" id="file-help">Text-based PDFs · up to 20 MB.<br>Same filename replaces the previous document.</p>
+        <button type="submit">Upload policy</button>
+      </form>
+      <p class="hint storage">Uploaded documents stay available for your next search.</p>
+    </aside>
+    <section class="search-area" aria-labelledby="search-title">
+      <h2 id="search-title">Ask your policy.</h2>
+      <form id="search-form">
+        <label for="question">Policy question</label>
+        <div class="search-row"><input id="question" placeholder="How many days of annual leave do I get?" maxlength="500" required autocomplete="off"><button type="submit">Find answer</button></div>
+      </form>
+      <div class="examples" aria-label="Example policy questions"><span>Try asking</span>
+        <button type="button" data-question="How many annual leave days do I get per year?">Annual leave allowance</button>
+        <button type="button" data-question="How many days notice must a confirmed employee give?">Notice period</button>
+        <button type="button" data-question="How many days per week can I work from home?">Work from home</button>
+      </div>
+      <p id="status" role="status" aria-live="polite">Upload a document to get started.</p>
+      <section id="answer" hidden aria-labelledby="answer-title">
+        <h2 id="answer-title">From your policy</h2>
+        <p id="answer-text"></p><p id="answer-source" class="hint"></p>
+        <p class="hint">Answer generated from your policy. Check the supporting passages for conditions and context.</p>
+      </section>
+      <details id="passages" hidden><summary id="result-count">Supporting passages</summary><ol id="results"></ol></details>
+      <p id="empty">Ask a specific question to see the policy wording, its document, and page number.</p>
+      <details id="performance" hidden><summary>Search timing</summary><dl id="timings"></dl><p class="hint">Time spent finding passages and generating the answer. Excludes network and waiting time.</p></details>
+    </section>
+  </div>
+</main>
+<footer>Answers drawn from your documents, with sources you can check.</footer>
+<script>
+const $ = id => document.getElementById(id);
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the input values and try again.');
+  return data;
+}
+function busy(active, message) {
+  document.querySelectorAll('button').forEach(button => button.disabled = active);
+  $('status').textContent = message;
+  $('status').classList.remove('error');
+}
+function clearResults() {
+  $('results').replaceChildren(); $('result-count').textContent = '';
+  $('performance').hidden = true; $('answer').hidden = true; $('passages').hidden = true;
+  $('passages').open = false; $('performance').open = false; $('empty').hidden = false;
+  $('empty').textContent = 'Ask a specific question to see the policy wording, its document, and page number.';
+}
+async function refreshCorpus() {
+  const data = await api('/metrics');
+  $('corpus').textContent = `${data.documents} document${data.documents === 1 ? '' : 's'} ready`;
+  if (data.documents && $('status').textContent === 'Upload a document to get started.') $('status').textContent = 'Your policy is ready. Ask a question to get started.';
+}
+document.querySelectorAll('[data-question]').forEach(button => button.addEventListener('click', () => {
+  $('question').value = button.dataset.question; $('question').focus();
+}));
+$('upload-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  busy(true, 'Reading your policy…');
+  try {
+    const data = await api('/upload', {method: 'POST', body: new FormData(event.target)});
+    clearResults(); await refreshCorpus();
+    busy(false, `${data.document} is ready. Enter a policy question.`);
+  } catch (error) { busy(false, error.message); $('status').classList.add('error'); }
+});
+$('search-form').addEventListener('submit', async event => {
+  event.preventDefault(); clearResults(); busy(true, 'Finding relevant passages…');
+  try {
+    const data = await api('/search', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: $('question').value, mode: 'rerank', candidate_count: 5, final_k: 5})});
+    if (data.answer) {
+      $('answer-text').textContent = data.answer.text;
+      $('answer-source').textContent = `${data.answer.document} · Page ${data.answer.page}`;
+      $('answer').hidden = false;
+    }
+    for (const result of data.results) {
+      const li = document.createElement('li'), details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = `${result.document} · Page ${result.page}`;
+      const text = document.createElement('p'); text.textContent = result.text;
+      details.append(summary, text); li.append(details); $('results').append(li);
+    }
+    $('timings').replaceChildren();
+    for (const [key, label] of Object.entries({total_retrieval_ms:'Finding passages', answer_generation_ms:'Generating answer', total_response_ms:'Total'})) {
+      const group = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd');
+      dt.textContent = label; dd.textContent = `${data.latency[key].toFixed(2)} ms`;
+      group.append(dt, dd); $('timings').append(group);
+    }
+    $('performance').hidden = false; $('empty').hidden = Boolean(data.answer); $('passages').hidden = data.results.length === 0;
+    $('empty').textContent = 'No matching passage was found. Try rephrasing your question.';
+    $('result-count').textContent = `Supporting passages (${data.results.length})`;
+    busy(false, 'Your answer is ready. Review the supporting passages below.');
+  } catch (error) { busy(false, error.message); $('status').classList.add('error'); }
+});
+refreshCorpus().catch(() => { $('status').textContent = 'Unable to reach the server. Refresh when it is running.'; });
+</script>
+</body>
+</html>
