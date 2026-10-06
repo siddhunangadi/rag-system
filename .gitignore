@@ -4,3 +4,4 @@ __pycache__/
 .env
 graphify-out/
 .DS_Store
+data/benchmark*.json
