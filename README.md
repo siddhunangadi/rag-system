@@ -38,10 +38,17 @@ rag-system/
 
 ## What happens when I upload a PDF?
 
-1. **`app.py` receives the file.** It checks the filename and upload size.
-2. **`ingest.py` reads each page.** It breaks the text into smaller passages and keeps the document name and page number with each one.
-3. **`app.py` creates a numerical representation of each passage.** This is called an *embedding*. It lets the app compare text by meaning.
-4. **`storage.py` saves the data in Supabase.** The original PDF goes into file storage. The passages and their embeddings go into Supabase’s database.
+```mermaid
+flowchart TD
+    A["You upload a policy PDF"] --> B["Read the text on each page"]
+    B --> C["Split the text into small passages"]
+    C --> D["Turn each passage into a list of numbers<br/>used to compare text by meaning"]
+    D --> E["Save the original PDF, passages,<br/>page numbers, and number lists"]
+```
+
+Those number lists are called **embeddings**. They make it possible to find a passage even when your question uses different words.
+
+**Where the code fits:** `app.py` coordinates the upload. It calls `ingest.py` to read and split the PDF, uses the model loaded by `retrieval.py` to create embeddings, and calls `storage.py` to save the results in Supabase. The PDF is saved in file storage; the passages, page numbers, and embeddings are saved in the database.
 
 The app also prepares a keyword search index in memory. Uploading another PDF with the **same filename** replaces that document.
 
