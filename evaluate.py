@@ -10,7 +10,8 @@ import platform
 import random
 import numpy as np
 from ingest import chunk_pdf
-from retrieval import EMBEDDING_MODEL, RERANK_MODEL, EMBEDDING_REVISION, RERANK_REVISION, build_index, embedding_model, reranker, search, torch
+from retrieval import EMBEDDING_MODEL, RERANK_MODEL, EMBEDDING_REVISION, RERANK_REVISION, build_index, reranker, search, torch
+from storage import load_chunks
 
 ROOT = Path(__file__).parent
 
@@ -36,13 +37,17 @@ def run(args):
     for document in dataset['documents']:
         data = (args.dataset.parent / document).read_bytes()
         hashes[document] = hashlib.sha256(data).hexdigest()
-        chunks.extend(chunk_pdf(data, document, embedding_model().tokenizer, args.chunk_size, args.overlap))
+        chunks.extend(chunk_pdf(data, document, args.chunk_size, args.overlap))
     for item in dataset['queries']:
         if not item['relevant'] or any(r['grade'] not in (1, 2) for r in item['relevant']):
             raise ValueError('Every query needs positive relevance judgments with grades 1 or 2.')
         if not {(r['document'], r['page']) for r in item['relevant']} <= {(c['document'], c['page']) for c in chunks}:
             raise ValueError('Relevance judgment references a page absent from the corpus.')
-    index = build_index(chunks)
+    stored = load_chunks()
+    expected = {c['chunk_id']: c for c in chunks}
+    if {c['chunk_id']: c for c in stored} != expected:
+        raise ValueError('Use a dedicated Supabase project containing only the evaluation PDFs, uploaded with these chunk settings.')
+    index = build_index(stored)
     reranker()
     configs = [('dense', 'dense', 0), ('bm25', 'bm25', 0), ('rrf', 'rrf', 0)] + [(f'rerank_{n}', 'rerank', n) for n in (5, 10, 20)]
     for _, mode, n in configs:
@@ -81,11 +86,12 @@ def run(args):
                     processor=platform.processor(), python=platform.python_version(), torch_threads=torch.get_num_threads(),
                     embedding_model=EMBEDDING_MODEL, rerank_model=RERANK_MODEL, device='cpu',
                     embedding_revision=EMBEDDING_REVISION, rerank_revision=RERANK_REVISION,
-                    versions={name: version(name) for name in ('sentence-transformers', 'transformers', 'torch', 'faiss-cpu', 'numpy', 'rank-bm25', 'pypdf')},
+                    versions={name: version(name) for name in ('sentence-transformers', 'transformers', 'torch', 'langchain-text-splitters', 'numpy', 'rank-bm25', 'pypdf')},
+                    vector_backend='supabase_pgvector', chunk_unit='characters',
                     chunk_size=args.chunk_size, overlap=args.overlap, chunks=len(chunks), query_count=len(dataset['queries']),
                     repeats=args.repeats, seed=42, dense_k=20, bm25_k=20, rrf_k=60, final_k=5,
                     dataset_sha256=hashlib.sha256(args.dataset.read_bytes()).hexdigest(), corpus_sha256=hashes,
-                    timing_scope='Warm single-request retrieval; includes query embedding; excludes loading, indexing, HTTP and queueing.')
+                    timing_scope='Warm single-request retrieval; includes query embedding and Supabase HTTP; excludes loading, indexing, answer generation and queueing.')
     report = dict(metadata=metadata, summary=summary, comparisons=comparisons, samples=samples)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix('.tmp')
@@ -99,8 +105,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=Path, default=ROOT / 'data/evaluation.json')
     parser.add_argument('--output', type=Path, default=ROOT / 'data/benchmark.json')
     parser.add_argument('--repeats', type=int, default=3)
-    parser.add_argument('--chunk-size', type=int, default=400)
-    parser.add_argument('--overlap', type=int, default=60)
+    parser.add_argument('--chunk-size', type=int, default=500, help='Maximum characters per chunk')
+    parser.add_argument('--overlap', type=int, default=100, help='Target overlap in characters')
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error('--repeats must be positive')

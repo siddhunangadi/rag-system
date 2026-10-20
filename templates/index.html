@@ -89,7 +89,9 @@ $('search-form').addEventListener('submit', async event => {
       body: JSON.stringify({query: $('question').value, mode: 'rerank', candidate_count: 5, final_k: 5})});
     if (data.answer) {
       $('answer-text').textContent = data.answer.text;
-      $('answer-source').textContent = `${data.answer.document} · Page ${data.answer.page}`;
+      $('answer-source').textContent = data.answer.sources
+        .map(source => `${source.document} · Page ${source.page}`).join('; ');
+      $('answer-source').hidden = data.answer.sources.length === 0;
       $('answer').hidden = false;
     }
     for (const result of data.results) {

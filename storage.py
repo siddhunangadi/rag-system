@@ -15,19 +15,18 @@ def setting(name):
 
 
 def config():
-    return setting('SUPABASE_URL').rstrip('/'), setting('SUPABASE_SERVICE_ROLE_KEY')
-
-
-def enabled():
-    url, key = config()
-    return not os.getenv('HR_LOCAL_ONLY') and bool(url and key)
+    url, key = setting('SUPABASE_URL').rstrip('/'), setting('SUPABASE_SERVICE_ROLE_KEY')
+    if not url or not key:
+        raise RuntimeError('Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before starting the app.')
+    return url, key
 
 
 def request(method, path, **kwargs):
     url, key = config()
-    if not url or not key:
-        raise RuntimeError('Supabase is not configured.')
-    response = httpx.request(method, url + path, headers={'apikey': key, 'Authorization': f'Bearer {key}', **kwargs.pop('headers', {})}, timeout=30, **kwargs)
+    try:
+        response = httpx.request(method, url + path, headers={'apikey': key, 'Authorization': f'Bearer {key}', **kwargs.pop('headers', {})}, timeout=30, **kwargs)
+    except httpx.RequestError:
+        raise RuntimeError('Cannot reach Supabase. Check the connection and SUPABASE_URL.') from None
     if response.is_error:
         raise RuntimeError(f'Supabase request failed ({response.status_code}).')
     return response

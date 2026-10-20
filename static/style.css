@@ -45,6 +45,7 @@ button:disabled { opacity: .55; cursor: wait; }
 #answer h2 { font-size: 14px; color: #2546a9; margin-bottom: 14px; }
 #answer-text { font-size: 20px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 20px; }
 #answer-source { display: inline-block; color: #294789; background: white; padding: 5px 10px; margin: 0; overflow-wrap: anywhere; }
+#answer-source[hidden] { display: none; }
 #answer .hint:last-child { margin-bottom: 0; }
 details { font-size: 13px; }
 summary { cursor: pointer; color: #364d78; padding-block: 15px; }

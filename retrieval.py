@@ -1,5 +1,6 @@
 """Dense + lexical retrieval, RRF, then a bounded cross-encoder pass."""
 import os
+import json
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -10,12 +11,7 @@ os.environ.setdefault("HF_HOME", str(Path(__file__).parent / ".cache" / "hugging
 from sentence_transformers import SentenceTransformer, CrossEncoder
 import torch
 import httpx
-from storage import setting
-# Import after PyTorch: the reverse order crashed native inference on the tested macOS wheels.
-try:
-    import faiss
-except ImportError:  # production uses Supabase pgvector instead of local FAISS
-    faiss = None
+from storage import dense_search, setting
 
 # A fixed CPU budget makes local benchmarks easier to reproduce.
 torch.set_num_threads(int(os.getenv('TORCH_NUM_THREADS', '4')))
@@ -39,21 +35,13 @@ def tokenize(text):
     return re.findall(r"\w+", text.lower())
 
 
-def build_index(chunks, embed=True):
+def build_index(chunks):
     if not chunks:
         raise ValueError('Upload a policy PDF before searching.')
     tokens = [tokenize(c['text']) for c in chunks]
     if not any(tokens):
         raise ValueError('The document has no searchable words.')
-    index = None
-    if embed:
-        if faiss is None:
-            raise RuntimeError('FAISS is required for local indexing; configure Supabase for production.')
-        vectors = embedding_model().encode([c['text'] for c in chunks], normalize_embeddings=True,
-                                           convert_to_numpy=True, show_progress_bar=False)
-        index = faiss.IndexFlatIP(vectors.shape[1])
-        index.add(vectors)
-    return chunks, index, BM25Okapi(tokens)
+    return chunks, BM25Okapi(tokens)
 
 
 def rrf(dense, lexical, k=60):
@@ -64,7 +52,7 @@ def rrf(dense, lexical, k=60):
     return sorted(scores.items(), key=lambda pair: (-pair[1], pair[0]))
 
 
-def search(query, index, mode='rerank', dense_k=20, bm25_k=20, candidate_count=10, final_k=5, rrf_k=60, dense_search=None):
+def search(query, index, mode='rerank', dense_k=20, bm25_k=20, candidate_count=10, final_k=5, rrf_k=60):
     started = perf_counter()
     query = query.strip()
     if not query or len(query) > 500:
@@ -75,7 +63,7 @@ def search(query, index, mode='rerank', dense_k=20, bm25_k=20, candidate_count=1
         raise ValueError('Retrieval limits must be between 1 and 100.')
     if mode == 'rerank' and final_k > candidate_count:
         raise ValueError('final_k cannot exceed candidate_count.')
-    chunks, dense, lexical = index
+    chunks, lexical = index
     latency = dict.fromkeys(('query_embedding_ms', 'dense_search_ms', 'bm25_search_ms', 'rrf_ms', 'rerank_ms'), 0.0)
     ranked = []
     if mode != 'bm25':
@@ -83,11 +71,10 @@ def search(query, index, mode='rerank', dense_k=20, bm25_k=20, candidate_count=1
         vector = embedding_model().encode([query], normalize_embeddings=True, show_progress_bar=False)
         latency['query_embedding_ms'] = (perf_counter() - t) * 1000
         t = perf_counter()
-        if dense_search:
-            ranked = dense_search(vector[0].tolist(), min(dense_k, len(chunks)))
-        else:
-            scores, ids = dense.search(vector, min(dense_k, len(chunks)))
-            ranked = [(int(i), float(s)) for i, s in zip(ids[0], scores[0])]
+        positions = {chunk['chunk_id']: i for i, chunk in enumerate(chunks)}
+        ranked = [(positions[row['chunk_id']], float(row['similarity']))
+                  for row in dense_search(vector[0].tolist(), min(dense_k, len(chunks)))
+                  if row['chunk_id'] in positions]
         latency['dense_search_ms'] = (perf_counter() - t) * 1000
     if mode != 'dense':
         t = perf_counter()
@@ -123,17 +110,36 @@ def answer_from_llm(query, results):
     key = setting('GEMINI_API_KEY')
     if not key:
         raise RuntimeError('Gemini is not configured.')
-    context = '\n\n'.join(f'Passage {i}: {result["text"]}' for i, result in enumerate(results[:5], 1))
+    passages = {f'S{i}': result for i, result in enumerate(results[:5], 1)}
+    context = '\n\n'.join(f'{source_id}: {result["text"]}' for source_id, result in passages.items())
+    not_found = "I couldn't find this in the policy."
     prompt = ('Answer the policy question in one or two short sentences. Use only the passages below. '
-              'If the answer is absent, say: "I couldn\'t find this in the policy."\n\n'
+              'Return JSON with text and source_ids. Cite every passage supporting the answer using its source ID. '
+              f'If the answer is absent, return text "{not_found}" and an empty source_ids list.\n\n'
               f'Question: {query}\n\n{context}')
-    response = httpx.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-                          params={'key': key}, json={'contents': [{'parts': [{'text': prompt}]}],
-                                                      'generationConfig': {'maxOutputTokens': 100, 'temperature': 0}}, timeout=30)
+    schema = {'type': 'OBJECT', 'properties': {'text': {'type': 'STRING'},
+              'source_ids': {'type': 'ARRAY', 'items': {'type': 'STRING', 'enum': list(passages)}}},
+              'required': ['text', 'source_ids']}
+    try:
+        response = httpx.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+                              params={'key': key}, json={'contents': [{'parts': [{'text': prompt}]}],
+                              'generationConfig': {'maxOutputTokens': 300, 'temperature': 0,
+                                                   'responseMimeType': 'application/json', 'responseSchema': schema}}, timeout=30)
+    except httpx.RequestError:
+        raise RuntimeError('Cannot reach Gemini. Try again later.') from None
     if response.is_error:
         raise RuntimeError(f'Gemini request failed ({response.status_code}).')
     try:
-        text = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-    except (KeyError, IndexError, TypeError):
-        raise RuntimeError('Gemini returned no answer.') from None
-    return dict(text=text, document=results[0]['document'], page=results[0]['page'])
+        answer = json.loads(response.json()['candidates'][0]['content']['parts'][0]['text'])
+        text, source_ids = answer['text'], answer['source_ids']
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise RuntimeError('Gemini returned an invalid answer or missing source citations.') from None
+    if (not isinstance(text, str) or not text.strip() or not isinstance(source_ids, list)
+            or any(not isinstance(source_id, str) or source_id not in passages for source_id in source_ids)
+            or (not source_ids and text.strip() != not_found)):
+        raise RuntimeError('Gemini returned an invalid answer or missing source citations.')
+    if text.strip() == not_found:
+        source_ids = []
+    sources = [dict(source_id=source_id, **{key: passages[source_id][key] for key in ('chunk_id', 'document', 'page')})
+               for source_id in dict.fromkeys(source_ids)]
+    return dict(text=text.strip(), sources=sources)

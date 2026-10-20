@@ -34,8 +34,17 @@ begin
   from jsonb_array_elements(p_chunks);
 end $$;
 
+-- Load pgvector's user-settable parameters before validating the function settings.
+select vector_dims('[0]'::vector);
+
 create or replace function match_policy_chunks(query_embedding vector(384), match_count integer)
-returns table(chunk_id text, similarity real) language sql stable set search_path = public as $$
+returns table(chunk_id text, similarity real) language sql stable
+set search_path = public
+-- Prefer HNSW even for small corpora; these settings are restored when the function exits.
+set enable_seqscan = off
+set hnsw.ef_search = 100
+set hnsw.iterative_scan = strict_order
+as $$
   select chunk_id, (1 - (embedding <=> query_embedding))::real
   from policy_chunks order by embedding <=> query_embedding limit match_count
 $$;
