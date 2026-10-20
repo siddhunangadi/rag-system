@@ -1,108 +1,67 @@
 # HR Policy Finder
 
-Upload an HR-policy PDF, ask a question, and get a short answer with the document names and page numbers cited by the model.
+A small web app that helps you find answers inside HR-policy PDFs.
 
-For example, upload an employee handbook and ask **“How many annual leave days do I get?”** The app finds relevant passages, asks Gemini to write an answer from them, and shows the passages so you can check the wording yourself.
+**Upload a policy → ask a question → read the answer and its cited pages.**
 
-This is a small **retrieval-augmented generation (RAG)** app: it finds document passages before generating an answer. It searches uploaded PDFs, not the internet.
+For example, upload an employee handbook and ask: **“How many annual leave days do I get?”** The app searches the uploaded text and asks Gemini to write a short answer from the passages it finds.
 
-[Folder guide](#folder-guide) · [How it works](#how-it-works) · [Run locally](#run-locally) · [Tests](#tests-and-evaluation) · [Common problems](#common-problems)
-
-## Folder guide
-
-Most of the application lives in **four Python files**. There is no frontend build step.
+## What is in this folder?
 
 ```text
 rag-system/
-├── app.py                  Receives uploads and questions; connects the other files
-├── ingest.py               Reads PDFs and splits each page into smaller passages
-├── retrieval.py            Finds passages, ranks them, and asks Gemini for an answer
-├── storage.py              Saves PDFs and passages in Supabase; runs vector searches
+├── app.py                  Starts the app and handles browser requests
+├── ingest.py               Reads a PDF and splits its pages into small passages
+├── retrieval.py            Searches passages and creates an answer
+├── storage.py              Reads and writes data in Supabase
 │
 ├── templates/
-│   └── index.html          The web page and its browser-side JavaScript
+│   └── index.html          The page you see in your browser, including its JavaScript
 ├── static/
-│   └── style.css           Colors, spacing, typography, and mobile layout
+│   └── style.css           The appearance and mobile layout of that page
 │
 ├── data/
-│   ├── hr_policy.pdf       Fictional policy document for trying the app
-│   └── evaluation.json     Test questions and the pages expected to answer them
+│   ├── hr_policy.pdf       A fictional PDF you can upload to try the app
+│   └── evaluation.json     Questions and expected pages used to measure search quality
 │
-├── test_system.py          Automated tests for ingestion, search, citations, and API behavior
-├── evaluate.py             Compares search methods using the evaluation questions
-├── supabase.sql            Creates the database tables, storage bucket, and search functions
-├── requirements.txt        Python packages needed to run the app
-├── Dockerfile              Packages the app into a container with CPU inference
-├── .dockerignore           Files left out of the Docker build context
-├── .gitignore              Local files and secrets that Git should ignore
+├── supabase.sql            Sets up the database and PDF storage
+├── test_system.py          Checks that the application behaves correctly
+├── evaluate.py             Measures and compares the search methods
+├── requirements.txt        Lists the Python packages to install
+├── Dockerfile              Packages the app so it can run in Docker
+├── .dockerignore           Keeps unnecessary files out of the Docker build
+├── .gitignore              Keeps local files and secrets out of Git
 └── README.md               This guide
 ```
 
-**If you are reading the code for the first time:**
+**Start reading the code in `app.py`.** It receives uploads and questions, then calls the other Python files. The sections below show those connections.
 
-1. Start with [`app.py`](app.py). Follow `/upload` and `/search` to see which functions each request calls.
-2. Read [`ingest.py`](ingest.py) to understand how PDF pages become passages.
-3. Read [`retrieval.py`](retrieval.py) to follow the search and answer pipeline.
-4. Read [`storage.py`](storage.py) alongside [`supabase.sql`](supabase.sql) to see where data is saved and how vector matching works.
-5. Open [`templates/index.html`](templates/index.html) to see how the browser sends requests and displays the responses.
+## What happens when I upload a PDF?
 
-## How it works
+1. **`app.py` receives the file.** It checks the filename and upload size.
+2. **`ingest.py` reads each page.** It breaks the text into smaller passages and keeps the document name and page number with each one.
+3. **`app.py` creates a numerical representation of each passage.** This is called an *embedding*. It lets the app compare text by meaning.
+4. **`storage.py` saves the data in Supabase.** The original PDF goes into file storage. The passages and their embeddings go into Supabase’s database.
 
-### When you upload a PDF
+The app also prepares a keyword search index in memory. Uploading another PDF with the **same filename** replaces that document.
 
-```text
-Browser → app.py → ingest.py → embedding model → storage.py → Supabase
-```
+## What happens when I ask a question?
 
-1. **Read the PDF.** The app checks the upload and extracts text from each page.
-2. **Split the text.** LangChain's `RecursiveCharacterTextSplitter` creates passages of up to **500 characters**, with **100 characters of target overlap**. It keeps paragraph and line breaks where available and splits each page separately.
-3. **Create embeddings.** A local model converts each passage into a vector of **384 numbers** representing learned features of its text. These are normalized so cosine similarity can compare them.
-4. **Save the document.** Supabase Storage keeps the PDF. PostgreSQL keeps the passages, vectors, document names, and page numbers. The app also builds an in-memory keyword index.
+1. **`templates/index.html` sends the question to `app.py`.**
+2. **`app.py` calls `retrieval.py`.** It searches for passages in two ways: similar meaning through Supabase, and matching words through keyword search.
+3. **`retrieval.py` combines and reorders the results.** A local model rereads the strongest question–passage pairs to choose the most relevant passages.
+4. **Gemini writes the answer.** It receives up to five passages and returns the IDs of the passages it cites.
+5. **The app checks those IDs and shows the answer.** The browser displays the cited document names and page numbers, plus the retrieved passages for you to review.
 
-Uploading the **same filename** replaces that document's stored passages. On startup, the app reloads saved passages from Supabase and rebuilds its keyword index.
+The app rejects missing or invalid citations instead of assigning a guessed source. A valid source ID makes an answer traceable; it does not prove the answer is correct.
 
-### When you ask a question
+## How to run it
 
-```mermaid
-flowchart TD
-    Q[Your question] --> D[Search by meaning in Supabase]
-    Q --> K[Search by keywords with BM25]
-    D --> F[Combine the two rankings]
-    K --> F
-    F --> R[Reread and rerank the strongest passages]
-    R --> G[Gemini writes an answer and returns source IDs]
-    G --> V[Validate IDs and show cited documents and pages]
-```
+You need **Python 3.9–3.12**, a **Supabase project with pgvector 0.8 or newer**, and a **Gemini API key**.
 
-- **Search by meaning:** the embedding model converts your question into a vector. Supabase finds nearby passage vectors using pgvector and an HNSW index.
-- **Search by keywords:** BM25 looks for matching words, which helps with exact policy terms.
-- **Combine:** Reciprocal Rank Fusion (RRF) rewards passages that rank well in either search.
-- **Rerank:** a cross-encoder reads each shortlisted question–passage pair together and gives it a relevance score.
-- **Answer and cite:** Gemini receives up to five passages and returns answer text plus their source IDs. The app checks those IDs and maps them to the stored document names and page numbers.
+### 1. Install the packages
 
-Missing or invalid citations cause an error; the app does not guess a source. If Gemini returns “I couldn't find this in the policy,” the answer has no citations. A valid citation identifies a supplied passage; it does not independently prove that the answer is correct.
-
-### The main settings
-
-| Setting | Current value |
-|---|---|
-| Passage size | Up to 500 **characters**, not tokens |
-| Target overlap | 100 characters; actual overlap depends on text boundaries |
-| Meaning-search candidates | Up to 20 |
-| Keyword-search candidates | Up to 20 |
-| Passages reranked | Up to 5 in the web page; the API default is 10 |
-| Passages returned | Up to 5 by default |
-| Embedding model | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` |
-| Reranking model | `cross-encoder/ms-marco-MiniLM-L6-v2` |
-| Answer model endpoint | `gemini-flash-lite-latest` |
-
-The embedding and reranking models run on CPU. Gemini runs remotely and receives the question and retrieved passage text. The splitter settings are a starting configuration, not a benchmarked optimum.
-
-## Run locally
-
-You need **Python 3.9–3.12**, a **Supabase project with pgvector 0.8 or newer**, and a **Gemini API key**. Python 3.11 is used by the Docker image.
-
-### 1. Download the project and install its packages
+Download the project and install its packages. If you already have it, start from its folder.
 
 ```sh
 git clone https://github.com/siddhunangadi/rag-system.git
@@ -112,26 +71,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you already have the project, start from its folder and activate your virtual environment.
+### 2. Prepare Supabase
 
-### 2. Set up Supabase
+Open your Supabase project's **SQL Editor** and run [supabase.sql](supabase.sql). This creates the document tables, private PDF bucket, and vector search functions. Run it when setting up or upgrading the app.
 
-Open your Supabase project's **SQL Editor** and run the contents of [`supabase.sql`](supabase.sql). Run it when setting up a new project or upgrading an existing installation.
+### 3. Add the keys
 
-The script creates:
-
-| Database object | What it holds or does |
-|---|---|
-| `policy_documents` | One record for each uploaded document |
-| `policy_chunks` | Passage text, document/page metadata, and embeddings |
-| `policy_chunks_embedding_idx` | HNSW index for finding similar vectors |
-| `replace_policy_document` | Replaces a document's database records in one transaction |
-| `match_policy_chunks` | Returns passage IDs and cosine similarity scores |
-| `policy-pdfs` storage bucket | Original PDF files; the bucket is private |
-
-### 3. Add your configuration
-
-Create a file named `.env` beside `app.py`:
+Create `.env` beside `app.py`:
 
 ```text
 SUPABASE_URL=https://your-project.supabase.co
@@ -139,9 +85,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 GEMINI_API_KEY=your-gemini-api-key
 ```
 
-Use the values from your Supabase project and Gemini account. Keep this file on the server; `.gitignore` excludes it from Git. Environment variables can also supply these settings and take precedence over `.env`.
-
-Supabase is required for storage and semantic search. The Gemini key is needed when generating answers.
+Keep `.env` private. It is excluded from Git. Supabase is required for storage and semantic search; Gemini is required to generate answers.
 
 ### 4. Start the app
 
@@ -149,83 +93,55 @@ Supabase is required for storage and semantic search. The Gemini key is needed w
 uvicorn app:app --host 127.0.0.1 --port 8765
 ```
 
-Open [http://127.0.0.1:8765](http://127.0.0.1:8765), upload `data/hr_policy.pdf`, and try an example question. **The sample PDF is fictional.**
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765) and upload `data/hr_policy.pdf` to try it. Copying a PDF into `data/` does **not** index it; upload it through the page.
 
-The local models download on first startup, so the first run takes longer. Once they are cached, you can set `HF_HUB_OFFLINE=1` to skip Hugging Face network checks. Supabase and Gemini still need a network connection.
+The local search models download on first startup. Later startups reuse the downloaded models.
 
-### Optional: run with Docker
+## How to check it
 
-After setting up Supabase and `.env`:
-
-```sh
-docker build -t hr-policy-finder .
-docker run --rm --env-file .env -p 127.0.0.1:8765:8000 hr-policy-finder
-```
-
-The container serves the same app at [http://127.0.0.1:8765](http://127.0.0.1:8765). Models download on first container startup; their cache is not persisted by this command.
-
-## API at a glance
-
-| Method and path | Purpose | Input |
-|---|---|---|
-| `GET /` | Open the web page | None |
-| `POST /upload` | Upload or replace a policy PDF | Multipart `file`; optional `chunk_size` and `overlap` in characters |
-| `POST /search` | Find passages and generate an answer | JSON with `query`; optional search settings |
-| `GET /metrics` | Inspect document/chunk counts and recent retrieval times | None |
-
-For example, after uploading a document:
-
-```sh
-curl http://127.0.0.1:8765/search \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"How many annual leave days do I get?"}'
-```
-
-The response includes `answer.text`, `answer.sources`, ranked `results`, and stage timings in `latency`. Each cited source includes its source ID, chunk ID, document name, and page number. If retrieval returns no passages, `answer` is `null`.
-
-The search API supports `dense` (meaning), `bm25` (keywords), `rrf` (combined rankings), and `rerank` (combined rankings followed by reranking). Its default mode is `rerank`. The `/search` route also requests a Gemini answer in each mode.
-
-## Tests and evaluation
-
-**Tests check behavior.** Run them from the project folder:
+Run the application tests from the project folder:
 
 ```sh
 python -m unittest -v
 ```
 
-They use real local embedding and reranking models, with fixtures replacing external Supabase and Gemini calls. They cover PDF splitting, retrieval, policy conditions and exceptions, source validation, configuration errors, and API behavior. Cached models let you run them with `HF_HUB_OFFLINE=1`.
+Tests use real local search models and replace Supabase and Gemini calls with test responses. They do not need live service credentials. After the models are cached, `HF_HUB_OFFLINE=1` lets these tests run without downloading models.
 
-**Evaluation compares retrieval methods.** It uses [`data/evaluation.json`](data/evaluation.json), which contains questions and expected document pages. It reports how many relevant pages appear in the top five, how highly they rank, and how long retrieval takes.
-
-Use a **dedicated Supabase project** for evaluation. Apply `supabase.sql`, point `.env` at that project, and upload only the PDFs named in the evaluation file using the selected chunk settings. The script refuses to run if the stored corpus does not match.
+`evaluate.py` measures retrieval quality and speed; it does not test generated answers. Use a **separate Supabase project** containing only the PDFs listed in `data/evaluation.json`, uploaded with matching chunk settings. Point `.env` at that project, then run:
 
 ```sh
 python evaluate.py --repeats 3
 ```
 
-Results go to `data/benchmark.json`, which is excluded from Git. The evaluator reads Supabase without uploading documents or requesting Gemini answers. Retrieval timing includes query embedding and Supabase network calls; it excludes answer generation. Page-level scores do not establish that every policy condition was retrieved or that a generated answer would be correct.
+It checks the stored documents match the evaluation data, reads Supabase without uploading anything, and writes results to `data/benchmark.json`. That output is excluded from Git.
 
-## Common problems
+## Things to know
 
-| What you see | What to check |
+- Use unencrypted, text-based PDFs. Scanned images need OCR, which is not included. Each PDF can be up to 20 MB, 300 pages, and 2 million extracted characters; uploads are limited to 5,000 total passages across the collection.
+- PDFs and passages remain in Supabase after a restart. The app rebuilds its in-memory keyword index on startup. Run one application process so uploads and searches stay consistent.
+- The app uses one shared document collection and has no user login or per-user document separation.
+- Gemini receives your question and the retrieved passage text. Embedding and reranking happen locally on CPU.
+- Re-upload existing PDFs after changing chunk settings; a restart does not reprocess saved PDFs.
+- Review the original policy wording for conditions and exceptions. Search can retrieve weak matches, and model answers can be wrong. This is a policy lookup tool, not legal advice.
+
+<details>
+<summary>Optional: search settings and model names</summary>
+
+| Part | Implementation |
 |---|---|
-| Missing Supabase configuration | Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to `.env` or the environment. |
-| Supabase cannot be reached, or tables/functions are missing | Check the project URL, service-role key, network connection, and that `supabase.sql` was applied. |
-| “Upload a policy PDF first” | Upload a document; copying a PDF into `data/` does not index it automatically. |
-| “No extractable text” | Use a text-based PDF. Scanned images need OCR, which is not included. |
-| Models cannot load with offline mode enabled | Start once without `HF_HUB_OFFLINE=1` so the models can download. |
-| Gemini is not configured or returns a service error | Check the Gemini key and service availability. |
-| Missing or invalid source citations | The model response was rejected. Retry the question and inspect the retrieved passages. |
-| Evaluation corpus mismatch | Use a separate project containing exactly the evaluation PDFs, uploaded with matching chunk settings. |
+| PDF splitting | LangChain `RecursiveCharacterTextSplitter`; up to 500 characters, target overlap 100 characters; each page split separately |
+| Embeddings | `sentence-transformers/multi-qa-MiniLM-L6-cos-v1`; 384 numbers per passage |
+| Meaning search | Supabase PostgreSQL, pgvector, cosine similarity, and HNSW |
+| Keyword search | BM25 |
+| Combining rankings | Reciprocal Rank Fusion (RRF) |
+| Reranking | `cross-encoder/ms-marco-MiniLM-L6-v2` |
+| Answer generation | Gemini through `gemini-flash-lite-latest` |
 
-## Practical limits
+Search takes up to 20 meaning matches and 20 keyword matches. The web page reranks up to five candidates; the API defaults to ten. Both return up to five passages by default. Similarity scores are not confidence percentages, and there is no minimum relevance threshold.
 
-- PDFs must be unencrypted and text-based, no larger than **20 MB**, with at most **300 pages** and **2 million extracted characters**. Uploads are limited to **5,000 total passages** across the app's document collection.
-- Run **one application process**. Its keyword index stays in memory, and a lock keeps uploads and searches consistent within that process. Changes made through another app instance are not automatically synchronized.
-- The app has a shared document collection, with no user login or per-user document separation.
-- Re-upload PDFs after changing chunk settings. Restarting loads existing passages; it does not split saved PDFs again.
-- Similarity and relevance scores are not confidence percentages. Retrieval has no minimum relevance threshold, so even an unrelated question may retrieve passages.
-- Review the original wording for policy conditions and exceptions. This tool supports policy lookup; it does not replace HR review or provide legal advice.
+The chunk settings are a starting configuration, not a benchmarked optimum. The embedding model still tokenizes each resulting passage internally.
+
+</details>
 
 <details>
 <summary><strong>Technical note: checking HNSW index use</strong></summary>
